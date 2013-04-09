@@ -6,6 +6,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstdlib>
+#include <iostream>
+#include <fstream>
+
+using namespace std;
 
 struct seg_list
 {
@@ -21,40 +25,40 @@ int find_seg_address(void* segbase, rvm_t rvm)
 {
 	printf("***Number of segments = %d\n", rvm->num_seg);
 	int i;
-        for(i=0; i<rvm->num_seg; i++)
-        {
+	for(i=0; i<rvm->num_seg; i++)
+	{
 		printf("Address segbase %p\n", segbase);
 		printf("Address segment %p\n", rvm->segment_list[i]->memory);
-                if(rvm->segment_list[i]->memory == segbase)
-                {
-                        //printf("Found and unmapping\n");
-                        //free(rvm->segment_list[i]->memory);
-                        //rvm->segment_list[i]->mapped = UNMAPPED;
-                        return i;
-                }
-        }
-        //printf("Not found the segment to unmap\n");
-        return -1;
+		if(rvm->segment_list[i]->memory == segbase)
+		{
+			//printf("Found and unmapping\n");
+			//free(rvm->segment_list[i]->memory);
+			//rvm->segment_list[i]->mapped = UNMAPPED;
+			return i;
+		}
+	}
+	//printf("Not found the segment to unmap\n");
+	return -1;
 }
 
 int find_seg_address_trans(void* segbase, trans_t tid)
 {
-        printf("***Number of segments = %d\n", tid->num_seg);
-        int i;
-        for(i=0; i<tid->num_seg; i++)
-        {
-                printf("Address segbase %p\n", segbase);
-                printf("Address segment %p\n", tid->segment_list[i]->memory);
-                if(tid->segment_list[i]->memory == segbase)
-                {
-                        //printf("Found and unmapping\n");
-                        //free(rvm->segment_list[i]->memory);
-                        //rvm->segment_list[i]->mapped = UNMAPPED;
-                        return i;
-                }
-        }
-        //printf("Not found the segment to unmap\n");
-        return -1;
+	printf("***Number of segments = %d\n", tid->num_seg);
+	int i;
+	for(i=0; i<tid->num_seg; i++)
+	{
+		printf("Address segbase %p\n", segbase);
+		printf("Address segment %p\n", tid->segment_list[i]->memory);
+		if(tid->segment_list[i]->memory == segbase)
+		{
+			//printf("Found and unmapping\n");
+			//free(rvm->segment_list[i]->memory);
+			//rvm->segment_list[i]->mapped = UNMAPPED;
+			return i;
+		}
+	}
+	//printf("Not found the segment to unmap\n");
+	return -1;
 }
 
 int find_seg(const char* segname, rvm_t rvm)
@@ -76,6 +80,70 @@ int find_seg(const char* segname, rvm_t rvm)
 	return -1;
 }
 
+
+void check_log_file(rvm_t rvm, mem_segment* seg)
+{
+	struct stat file_stat;
+	char* file_name = (char*)malloc(sizeof(char)*(strlen(rvm->dir)+4));
+	strcpy(file_name, rvm->dir);
+	strcat(file_name, "/");
+	strcat(file_name, "log");
+
+	stat(file_name, &file_stat);
+	//FILE* fd = fopen(file_name, "rb");
+	//stat(file_name, &file_stat);
+	printf("Size of log file is %d\n", file_stat.st_size);
+	if(file_stat.st_size == 0)
+	{
+		printf("Log file is empty!!\n");
+		return;
+	}
+
+	char *str = (char*)malloc(sizeof(char)*file_stat.st_size);
+
+	fstream myfile;
+	string line;
+	size_t pos;
+	myfile.open(file_name, ios::binary | ios::in);
+	while ( myfile.good() )
+	{
+		getline (myfile,line);
+		//cout << line << endl;
+		pos=line.find("Segbase:"); // search
+		if(pos!=string::npos) // string::npos is returned if string is not found
+		{
+			cout <<"Found!\n";
+			printf("Segment = %s\n", (line.substr(pos+8)).c_str());
+
+			while ( myfile.good() )
+			{
+				size_t pos;
+				getline (myfile,line);
+				//cout << line << endl;
+				pos=line.find("Offset:"); // search
+				int pos2 = line.find(" ");
+				if((pos!=string::npos) && (pos2!=string::npos)) // string::npos is returned if string is not found
+				{
+					cout <<" Offset Found!\n";
+					cout << line << endl;
+					int offset, size;
+					printf("Offset = %d\n", offset = atoi((line.substr(pos+7,pos2-pos)).c_str()));
+					printf("Size = %d\n", size = atoi((line.substr(pos2+6)).c_str()));
+
+					//char* mem = (char*)malloc(sizeof(char)*size);
+					myfile.read(((char*)seg->memory)+offset, size);
+					//printf("Read memory = \n%s\n", mem);
+					
+					break;
+				}
+
+			}
+		}
+
+	}
+	myfile.close();
+
+}
 
 rvm_t rvm_init(const char* dir)
 {
@@ -128,7 +196,7 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 	mem_segment *seg = (mem_segment*)malloc(sizeof(mem_segment));
 	if(find_seg(segment_name, rvm) == -1)
 	{
-		printf("Segment is not found\n");
+		printf("Segment is not found. Segment name = %s\n",segment_name);
 		seg->segname = (char*)malloc(sizeof(char)*strlen(segment_name));
 		strcpy(seg->segname, segment_name);
 		seg->size = size_to_create;
@@ -137,7 +205,7 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 		if(stat(segment_name, &file_stat) < 0)
 		{
 			printf("Segment file not found\n");
-			fd = open(segment_name, O_WRONLY | O_CREAT | O_APPEND | O_EXCL, (mode_t)0777);
+			fd = open(segment_name, O_WRONLY | O_CREAT | O_EXCL, (mode_t)0600);
 			if (fd == -1) {
 				perror("Error opening file for writing");
 				return NULL;
@@ -152,7 +220,7 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 			}
 
 			/* write just one byte at the end */
-			result = write(fd, "", 1);
+			result = write(fd, "A", 1);
 			if (result < 0) {
 				close(fd);
 				perror("Error writing a byte at the end of the file");
@@ -169,6 +237,7 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 			struct stat file_stat;
 			stat(segment_name, &file_stat);
 
+			printf("Size of segment = %d\n", file_stat.st_size);
 			if(file_stat.st_size < size_to_create)
 			{
 				printf("Exists but size is less\n");
@@ -202,6 +271,9 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 		//char *file_data = (char*)malloc(sizeof(char)(size_to_create);
 		read(fd, seg->memory, size_to_create);
 		printf("Data read\n");
+
+		check_log_file(rvm, seg);
+
 		rvm->segment_list.push_back(seg);
 		rvm->num_seg++;
 		printf("Added to the list\n");
@@ -219,10 +291,10 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 
 void rvm_destroy(rvm_t rvm, const char *name_seg)
 {
-        char* segment_name = (char*)malloc(sizeof(char)*(strlen(name_seg)+strlen(rvm->dir)+1));
-        strcpy(segment_name, rvm->dir);
-        strcat(segment_name, "/");
-        strcat(segment_name, name_seg);
+	char* segment_name = (char*)malloc(sizeof(char)*(strlen(name_seg)+strlen(rvm->dir)+1));
+	strcpy(segment_name, rvm->dir);
+	strcat(segment_name, "/");
+	strcat(segment_name, name_seg);
 
 	int index =find_seg(segment_name, rvm);
 	if(index != -1)
@@ -288,7 +360,7 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases)
 		}
 	}
 
-        trans_t transaction = (trans_t)malloc(sizeof(trans_struct));
+	trans_t transaction = (trans_t)malloc(sizeof(trans_struct));
 	transaction->rvm = rvm;
 	transaction->state = NOT_COMMITTED;
 	transaction->num_seg = numsegs;
@@ -311,7 +383,7 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 		printf("Error: segment not initialized for transaction\n");
 		return;
 	}
-	
+
 	region->segment = tid->segment_list[index];
 	region->offset = offset;
 	region->size = size;
@@ -335,8 +407,14 @@ void rvm_commit_trans(trans_t tid)
 		sprintf(buffer, "%d", tid->region_list[i]->offset);
 		//itoa(tid->region_list[i]->offset, buffer, 10);
 		write(tid->rvm->logfile, "Offset:", 7);
+		write(tid->rvm->logfile, buffer, strlen(buffer));
+		write(tid->rvm->logfile, " ", 1);
+		sprintf(buffer, "%d", tid->region_list[i]->size);
+                //itoa(tid->region_list[i]->offset, buffer, 10);
+                write(tid->rvm->logfile, "Size:", 5);
                 write(tid->rvm->logfile, buffer, strlen(buffer));
-                write(tid->rvm->logfile, "\n", 1);
+
+		write(tid->rvm->logfile, "\n", 1);
 
 		write(tid->rvm->logfile, tid->region_list[i]->segment->memory + tid->region_list[i]->offset, tid->region_list[i]->size);
 		write(tid->rvm->logfile, "\n\n", 2);
