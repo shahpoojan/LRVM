@@ -21,6 +21,7 @@ typedef struct seg_list seg_list;
 
 int rvm_count = 0;
 
+// Finds the segment by the starting address of its memory. Returns -1 if the segment is  not found
 int find_seg_address(void* segbase, rvm_t rvm)
 {
 	printf("***Number of segments = %d\n", rvm->num_seg);
@@ -41,6 +42,7 @@ int find_seg_address(void* segbase, rvm_t rvm)
 	return -1;
 }
 
+// Finds the segments in the transaction by the staring address of its memory. Returns -1 if it is not found
 int find_seg_address_trans(void* segbase, trans_t tid)
 {
 	printf("***Number of segments = %d\n", tid->num_seg);
@@ -61,6 +63,7 @@ int find_seg_address_trans(void* segbase, trans_t tid)
 	return -1;
 }
 
+// Finds the segment by its name
 int find_seg(const char* segname, rvm_t rvm)
 {
 	printf("Find is called. Count is %d\n", rvm->num_seg);
@@ -80,7 +83,7 @@ int find_seg(const char* segname, rvm_t rvm)
 	return -1;
 }
 
-
+// Checks the log while the mapping operation to check if there are some changes that are not written back to the original file
 void check_log_file(rvm_t rvm, mem_segment* seg)
 {
 	struct stat file_stat;
@@ -108,7 +111,8 @@ void check_log_file(rvm_t rvm, mem_segment* seg)
 	while ( myfile.good() )
 	{
 		getline (myfile,line);
-		//cout << line << endl;
+
+		// Read the log file to find the segment name and the offset within the memory
 		pos=line.find("Segbase:"); // search
 		if(pos!=string::npos) // string::npos is returned if string is not found
 		{
@@ -130,7 +134,7 @@ void check_log_file(rvm_t rvm, mem_segment* seg)
 					printf("Offset = %d\n", offset = atoi((line.substr(pos+7,pos2-pos)).c_str()));
 					printf("Size = %d\n", size = atoi((line.substr(pos2+6)).c_str()));
 
-					//char* mem = (char*)malloc(sizeof(char)*size);
+					// Write the corresponding changes to the memory. Thus these changes will be reflected in the future transactions when the segments are mapped.
 					myfile.read(((char*)seg->memory)+offset, size);
 					//printf("Read memory = \n%s\n", mem);
 					
@@ -266,12 +270,15 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 		printf("After seek\n");
 		seg->file_handle = fd;
 		seg->state = MAPPED;
+
+		// Copy the file data to the memory
 		seg->memory = (char*)malloc(sizeof(char)*size_to_create);
 		printf("After malloc\n");
 		//char *file_data = (char*)malloc(sizeof(char)(size_to_create);
 		read(fd, seg->memory, size_to_create);
 		printf("Data read\n");
 
+		// Check the log for the changes that are not written to the file
 		check_log_file(rvm, seg);
 
 		rvm->segment_list.push_back(seg);
@@ -393,9 +400,9 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 	return;
 }
 
+// This will only write the changes to the log file
 void rvm_commit_trans(trans_t tid)
 {
-	//int fd = open("rvm_segments/log", O_WRONLY | O_APPEND);
 	int i;
 	for(i=0; i<tid->num_region; i++)
 	{
