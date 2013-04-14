@@ -21,7 +21,6 @@ typedef struct seg_list seg_list;
 
 int rvm_count = 0;
 
-// Finds the segment by the starting address of its memory. Returns -1 if the segment is  not found
 int find_seg_address(void* segbase, rvm_t rvm)
 {
 	printf("***Number of segments = %d\n", rvm->num_seg);
@@ -42,7 +41,6 @@ int find_seg_address(void* segbase, rvm_t rvm)
 	return -1;
 }
 
-// Finds the segments in the transaction by the staring address of its memory. Returns -1 if it is not found
 int find_seg_address_trans(void* segbase, trans_t tid)
 {
 	printf("***Number of segments = %d\n", tid->num_seg);
@@ -63,7 +61,6 @@ int find_seg_address_trans(void* segbase, trans_t tid)
 	return -1;
 }
 
-// Finds the segment by its name
 int find_seg(const char* segname, rvm_t rvm)
 {
 	printf("Find is called. Count is %d\n", rvm->num_seg);
@@ -83,7 +80,7 @@ int find_seg(const char* segname, rvm_t rvm)
 	return -1;
 }
 
-// Checks the log while the mapping operation to check if there are some changes that are not written back to the original file
+
 void check_log_file(rvm_t rvm, mem_segment* seg)
 {
 	struct stat file_stat;
@@ -111,8 +108,7 @@ void check_log_file(rvm_t rvm, mem_segment* seg)
 	while ( myfile.good() )
 	{
 		getline (myfile,line);
-
-		// Read the log file to find the segment name and the offset within the memory
+		//cout << line << endl;
 		pos=line.find("Segbase:"); // search
 		if(pos!=string::npos) // string::npos is returned if string is not found
 		{
@@ -134,7 +130,7 @@ void check_log_file(rvm_t rvm, mem_segment* seg)
 					printf("Offset = %d\n", offset = atoi((line.substr(pos+7,pos2-pos)).c_str()));
 					printf("Size = %d\n", size = atoi((line.substr(pos2+6)).c_str()));
 
-					// Write the corresponding changes to the memory. Thus these changes will be reflected in the future transactions when the segments are mapped.
+					//char* mem = (char*)malloc(sizeof(char)*size);
 					myfile.read(((char*)seg->memory)+offset, size);
 					//printf("Read memory = \n%s\n", mem);
 					
@@ -169,7 +165,6 @@ rvm_t rvm_init(const char* dir)
 		rvm->logfile = open(temp, O_RDWR | O_CREAT);
 		rvm->num_seg = 0;
 		rvm->id = rvm_count++;
-		close(rvm->logfile);
 
 	}
 
@@ -182,10 +177,8 @@ rvm_t rvm_init(const char* dir)
 		rvm->logfile = open(temp, O_RDWR);
 		rvm->num_seg = 0;
 		rvm->id = rvm_count++;
-		close(rvm->logfile);
 	}
 
-	system("chmod -R 777 *");
 	return rvm;
 }
 
@@ -273,17 +266,12 @@ void *rvm_map(rvm_t rvm, const char *name_seg, int size_to_create)
 		printf("After seek\n");
 		seg->file_handle = fd;
 		seg->state = MAPPED;
-
-		// Copy the file data to the memory
-		seg->memory = malloc(sizeof(char)*size_to_create);
-		seg->undo_log = malloc(sizeof(char)*size_to_create);
+		seg->memory = (char*)malloc(sizeof(char)*size_to_create);
 		printf("After malloc\n");
 		//char *file_data = (char*)malloc(sizeof(char)(size_to_create);
 		read(fd, seg->memory, size_to_create);
-		memcpy(seg->undo_log, seg->memory, size_to_create);
 		printf("Data read\n");
 
-		// Check the log for the changes that are not written to the file
 		check_log_file(rvm, seg);
 
 		rvm->segment_list.push_back(seg);
@@ -342,7 +330,6 @@ void rvm_unmap(rvm_t rvm, void *segbase)
 		{
 			printf("Found and unmapping\n");
 			free(rvm->segment_list[i]->memory);
-			free(rvm->segment_list[i]->undo_log);
 			rvm->segment_list[i]->state = UNMAPPED;
 			return;
 		}
@@ -406,130 +393,31 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 	return;
 }
 
-// This will only write the changes to the log file
 void rvm_commit_trans(trans_t tid)
 {
+	//int fd = open("rvm_segments/log", O_WRONLY | O_APPEND);
 	int i;
-	char log[200];
-	strcpy(log, tid->rvm->dir);
-	strcat(log, "/log");
-	cout << "{{{{{{{{ " << log << " }}}}}}}}}}" << endl;
-
-	int logfile = open(log, O_WRONLY | O_APPEND);
-	cout << "Logfile = " << logfile << endl;
-
 	for(i=0; i<tid->num_region; i++)
 	{
-		write(logfile, "Segbase:", 8);
-		write(logfile, tid->region_list[i]->segment->segname, strlen(tid->region_list[i]->segment->segname));
-		write(logfile, "\n", 1);
+		write(tid->rvm->logfile, "Segbase:", 8);
+		write(tid->rvm->logfile, tid->region_list[i]->segment->segname, strlen(tid->region_list[i]->segment->segname));
+		write(tid->rvm->logfile, "\n", 1);
 
 		char buffer[100];
 		sprintf(buffer, "%d", tid->region_list[i]->offset);
 		//itoa(tid->region_list[i]->offset, buffer, 10);
-		write(logfile, "Offset:", 7);
-		write(logfile, buffer, strlen(buffer));
-		write(logfile, " ", 1);
+		write(tid->rvm->logfile, "Offset:", 7);
+		write(tid->rvm->logfile, buffer, strlen(buffer));
+		write(tid->rvm->logfile, " ", 1);
 		sprintf(buffer, "%d", tid->region_list[i]->size);
                 //itoa(tid->region_list[i]->offset, buffer, 10);
-                write(logfile, "Size:", 5);
-                write(logfile, buffer, strlen(buffer));
+                write(tid->rvm->logfile, "Size:", 5);
+                write(tid->rvm->logfile, buffer, strlen(buffer));
 
-		write(logfile, "\n", 1);
+		write(tid->rvm->logfile, "\n", 1);
 
-		write(logfile, tid->region_list[i]->segment->memory + tid->region_list[i]->offset, tid->region_list[i]->size);
-		write(logfile, "\n\n", 2);
-		memcpy(tid->region_list[i]->segment->undo_log + tid->region_list[i]->offset, tid->region_list[i]->segment->memory + tid->region_list[i]->offset, tid->region_list[i]->size);
+		write(tid->rvm->logfile, tid->region_list[i]->segment->memory + tid->region_list[i]->offset, tid->region_list[i]->size);
+		write(tid->rvm->logfile, "\n\n", 2);
 	}
-
-	close(logfile);
 	system("chmod -R 777 *");
-}
-
-
-void rvm_abort_trans(trans_t tid)
-{
-	printf("+++++++++ abort called +++++++++\n");
-	int i;
-	for(i=0; i<tid->num_region; i++)
-	{
-		memcpy(tid->region_list[i]->segment->memory+tid->region_list[i]->offset, tid->region_list[i]->segment->undo_log+tid->region_list[i]->offset, tid->region_list[i]->size);
-	}
-}
-
-
-void rvm_truncate_log(rvm_t rvm)
-{
-        struct stat file_stat;
-        char* file_name = (char*)malloc(sizeof(char)*(strlen(rvm->dir)+4));
-        strcpy(file_name, rvm->dir);
-        strcat(file_name, "/");
-        strcat(file_name, "log");
-
-        stat(file_name, &file_stat);
-        //FILE* fd = fopen(file_name, "rb");
-        //stat(file_name, &file_stat);
-        printf("Size of log file is %d\n", file_stat.st_size);
-        if(file_stat.st_size == 0)
-        {
-                printf("Log file is empty!!\n");
-                return;
-        }
-
-        char *str = (char*)malloc(sizeof(char)*file_stat.st_size);
-
-        fstream myfile;
-        string line;
-        size_t pos;
-        myfile.open(file_name, ios::binary | ios::in);
-        while ( myfile.good() )
-        {
-                getline (myfile,line);
-
-                // Read the log file to find the segment name and the offset within the memory
-                pos=line.find("Segbase:"); // search
-                if(pos!=string::npos) // string::npos is returned if string is not found
-                {
-                        cout <<"Found!\n";
-                        printf("Segment = %s\n", (line.substr(pos+8)).c_str());
-			char *segname = (char*)malloc(sizeof(char)*strlen((line.substr(pos+8)).c_str()));
-			strcpy(segname, (line.substr(pos+8)).c_str());
-                        while ( myfile.good() )
-                        {
-                                size_t pos;
-                                getline (myfile,line);
-                                //cout << line << endl;
-                                pos=line.find("Offset:"); // search
-                                int pos2 = line.find(" ");
-                                if((pos!=string::npos) && (pos2!=string::npos)) // string::npos is returned if string is not found
-                                {
-                                        cout <<" Offset Found!\n";
-                                        cout << line << endl;
-                                        int offset, size;
-                                        printf("Offset = %d\n", offset = atoi((line.substr(pos+7,pos2-pos)).c_str()));
-                                        printf("Size = %d\n", size = atoi((line.substr(pos2+6)).c_str()));
-
-                                        // Write the corresponding changes to the memory. Thus these changes will be reflected in the future transactions when the segments are mapped.
-					printf("====File name = %s====\n",segname);
-
-					char *buffer = (char*)malloc(sizeof(char)*size);
-					myfile.read(buffer, size);
-
-					fstream back_store;
-					back_store.open(segname, ios::binary | ios::in | ios::out);
-					back_store.seekg(offset);
-					back_store.write(buffer, size);
-					back_store.close();
-
-                                        break;
-                                }
-
-                        }
-                }
-
-        }
-        myfile.close();
-	myfile.open(file_name, ios::out);
-	myfile.close();
-	
 }

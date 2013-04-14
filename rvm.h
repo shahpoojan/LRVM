@@ -14,6 +14,7 @@ struct mem_segment
         int size;
         int file_handle;
         void* memory;
+	void* undo_log;
 	int state;
 };
 typedef struct mem_segment mem_segment;
