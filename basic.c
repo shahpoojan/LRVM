@@ -20,18 +20,22 @@ void proc1()
      
      rvm = rvm_init("rvm_segments");
      rvm_destroy(rvm, "testseg");
-     segs[0] = (char *) rvm_map(rvm, "testseg", 10000);
 
      
-     trans = rvm_begin_trans(rvm, 1, (void **) segs);
+	segs[0] = (char *) rvm_map(rvm, "testseg", 10000);
+  
+  trans = rvm_begin_trans(rvm, 1, (void **) segs);
      
      rvm_about_to_modify(trans, segs[0], 0, 100);
      sprintf(segs[0], TEST_STRING);
      
      rvm_about_to_modify(trans, segs[0], OFFSET2, 100);
      sprintf(segs[0]+OFFSET2, TEST_STRING);
-     
+
      rvm_commit_trans(trans);
+
+//	rvm_unmap(rvm, segs[0]);
+  //   segs[0] = (char *) rvm_map(rvm, "testseg", 1000);
 
      abort();
 	printf("\n");

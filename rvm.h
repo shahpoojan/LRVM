@@ -5,8 +5,8 @@ using namespace std;
 #define MAPPED 0
 #define UNMAPPED 1
 
-#define NOT_COMMITTED 0
-#define COMMITTED 1
+#define MODIFIED 0
+#define NOT_MODIFIED 1
 
 struct mem_segment
 {
@@ -16,6 +16,7 @@ struct mem_segment
         void* memory;
 	void* undo_log;
 	int state;
+	int modified;
 };
 typedef struct mem_segment mem_segment;
 

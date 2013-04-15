@@ -41,6 +41,7 @@ void proc1()
 
      rvm_commit_trans(trans);
 
+
      abort();
 }
 
@@ -84,7 +85,8 @@ int main(int argc, char **argv)
      }
 
      waitpid(pid, NULL, 0);
-
+	
+	printf("\n\n\nIn Proc 2\n\n");
      proc2();
 
      return 0;
